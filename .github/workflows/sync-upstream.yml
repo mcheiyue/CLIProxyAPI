@@ -20,48 +20,45 @@ jobs:
 
       - name: Add upstream remote
         run: |
-          git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git || true
-          git fetch upstream --tags
+          git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git 2>/dev/null || true
+          git fetch upstream --tags 2>/dev/null || git fetch upstream
 
       - name: Check upstream updates
         id: check
         run: |
-          # 获取上游最新 commit
-          UPSTREAM_COMMIT=$(git rev-parse upstream/main)
-          LOCAL_COMMIT=$(git rev-parse main)
+          git fetch upstream --tags 2>/dev/null || true
           
-          # 获取上游最新 tag
-          UPSTREAM_TAG=$(git describe --tags `git rev-list --tags --max-count=1` --abbrev=0 upstream/main)
+          UPSTREAM_TAG=$(git describe --tags `git rev-list --tags --max-count=1` --abbrev=0 upstream/main 2>/dev/null || git tag -l 'v*' --sort=-v:refname upstream | head -1)
           
-          echo "upstream_commit=${UPSTREAM_COMMIT}" >> $GITHUB_OUTPUT
           echo "upstream_tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
           
-          # 检查是否需要同步
-          if [ "$UPSTREAM_COMMIT" != "$LOCAL_COMMIT" ]; then
-            echo "need_sync=true" >> $GITHUB_OUTPUT
-            echo "上游有更新: ${UPSTREAM_TAG}"
-          else
+          CUSTOM_TAG="${UPSTREAM_TAG}-custom"
+          
+          if git tag -l "$CUSTOM_TAG" | grep -q "$CUSTOM_TAG"; then
             echo "need_sync=false" >> $GITHUB_OUTPUT
-            echo "已同步到上游最新版本"
+            echo "已同步到上游版本: ${UPSTREAM_TAG}"
+          else
+            echo "need_sync=true" >> $GITHUB_OUTPUT
+            echo "上游版本: ${UPSTREAM_TAG}，需要同步"
           fi
 
       - name: Merge upstream
         if: steps.check.outputs.need_sync == 'true'
         run: |
           git checkout main
-          git merge upstream/main --no-edit -m "同步上游更新 ${UPSTREAM_TAG}"
+          git merge upstream/main --no-edit -m "同步上游更新" || {
+            echo "合并有冲突，尝试自动解决..."
+            git diff --name-only --diff-filter=U
+            git checkout --ours internal/runtime/executor/codex_executor.go 2>/dev/null || true
+            git add -A
+            git commit -m "同步上游更新（保留自定义修改）" --no-edit || true
+          }
           git push origin main
           
-          # 创建自定义 tag
           UPSTREAM_TAG="${{ steps.check.outputs.upstream_tag }}"
           CUSTOM_TAG="${UPSTREAM_TAG}-custom"
           
-          # 删除旧的 custom tag（如果存在）
-          git tag -d "$CUSTOM_TAG" || true
-          git push origin --delete "$CUSTOM_TAG" || true
-          
-          # 创建新 tag
-          git tag "$CUSTOM_TAG"
+          git tag "$CUSTOM_TAG" 2>/dev/null || git tag -d "$CUSTOM_TAG" && git tag "$CUSTOM_TAG"
           git push origin "$CUSTOM_TAG"
           
           echo "已创建 tag: ${CUSTOM_TAG}"
