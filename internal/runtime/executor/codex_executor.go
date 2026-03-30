@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	codexUserAgent  = "codex_cli_rs/0.116.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464"
+	codexUserAgent  = "codex_cli_rs/0.116.0 (Linux 6.8.0; x86_64) vscode"
 	codexOriginator = "codex_cli_rs"
 )
 
