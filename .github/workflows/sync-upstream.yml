@@ -18,33 +18,30 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add upstream remote
+      - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git 2>/dev/null || true
-          git fetch upstream --tags 2>/dev/null || git fetch upstream
+          git fetch upstream main --tags
 
-      - name: Check upstream updates
+      - name: Get latest upstream tag
+        id: tag
+        run: |
+          UPSTREAM_TAG=$(git ls-remote --tags --sort='-v:refname' https://github.com/router-for-me/CLIProxyAPI.git | grep -oP 'refs/tags/v\d+\.\d+\.\d+$' | head -1 | sed 's|refs/tags/||')
+          echo "upstream_tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
+          echo "上游最新版本: ${UPSTREAM_TAG}"
+
+      - name: Check if sync needed
         id: check
         run: |
-          git fetch upstream --tags 2>/dev/null || true
-          
-          UPSTREAM_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-          
-          if [ -z "$UPSTREAM_TAG" ]; then
-            echo "无法获取上游版本"
-            exit 1
-          fi
-          
-          echo "upstream_tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
-          
+          UPSTREAM_TAG="${{ steps.tag.outputs.upstream_tag }}"
           CUSTOM_TAG="${UPSTREAM_TAG}-custom"
           
           if git tag -l "$CUSTOM_TAG" | grep -q "$CUSTOM_TAG"; then
             echo "need_sync=false" >> $GITHUB_OUTPUT
-            echo "已同步到上游版本: ${UPSTREAM_TAG}"
+            echo "已同步过版本: ${CUSTOM_TAG}"
           else
             echo "need_sync=true" >> $GITHUB_OUTPUT
-            echo "上游版本: ${UPSTREAM_TAG}，需要同步"
+            echo "需要同步: ${CUSTOM_TAG}"
           fi
 
       - name: Merge upstream
@@ -52,25 +49,21 @@ jobs:
         run: |
           git checkout main
           git merge upstream/main --no-edit -m "同步上游更新" || {
-            echo "合并有冲突，尝试自动解决..."
-            git diff --name-only --diff-filter=U
+            echo "合并有冲突，尝试保留自定义修改..."
             git checkout --ours internal/runtime/executor/codex_executor.go 2>/dev/null || true
             git add -A
             git commit -m "同步上游更新（保留自定义修改）" --no-edit || true
           }
           git push origin main
-          
-          UPSTREAM_TAG="${{ steps.check.outputs.upstream_tag }}"
+
+      - name: Create tag
+        if: steps.check.outputs.need_sync == 'true'
+        run: |
+          UPSTREAM_TAG="${{ steps.tag.outputs.upstream_tag }}"
           CUSTOM_TAG="${UPSTREAM_TAG}-custom"
           
-          git tag "$CUSTOM_TAG" 2>/dev/null || git tag -d "$CUSTOM_TAG" && git tag "$CUSTOM_TAG"
+          git tag "$CUSTOM_TAG"
           git push origin "$CUSTOM_TAG"
           
           echo "已创建 tag: ${CUSTOM_TAG}"
-
-      - name: Trigger docker build
-        if: steps.check.outputs.need_sync == 'true'
-        run: |
-          UPSTREAM_TAG="${{ steps.check.outputs.upstream_tag }}"
-          echo "上游版本: ${UPSTREAM_TAG}"
-          echo "将触发 docker-image workflow 构建 mcheiyue/cli-proxy-api:${UPSTREAM_TAG}-custom"
+          echo "Docker 构建将自动触发"
