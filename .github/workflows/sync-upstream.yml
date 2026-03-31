@@ -8,6 +8,9 @@ permissions:
 
 jobs:
   sync:
+    outputs:
+      need_sync: ${{ steps.check.outputs.need_sync }}
+      custom_tag: ${{ steps.vars.outputs.custom_tag }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,17 +39,21 @@ jobs:
           echo "upstream_tag=${UPSTREAM_TAG}" >> "$GITHUB_OUTPUT"
           echo "上游最新版本: ${UPSTREAM_TAG}"
 
+      - name: Build custom tag name
+        id: vars
+        run: |
+          echo "custom_tag=${{ steps.tag.outputs.upstream_tag }}-custom" >> "$GITHUB_OUTPUT"
+
       - name: Check if sync needed
         id: check
         run: |
-          UPSTREAM_TAG="${{ steps.tag.outputs.upstream_tag }}"
-          CUSTOM_TAG="${UPSTREAM_TAG}-custom"
+          CUSTOM_TAG="${{ steps.vars.outputs.custom_tag }}"
           
           if git tag -l "$CUSTOM_TAG" | grep -q "$CUSTOM_TAG"; then
-            echo "need_sync=false" >> $GITHUB_OUTPUT
+            echo "need_sync=false" >> "$GITHUB_OUTPUT"
             echo "已同步过版本: ${CUSTOM_TAG}"
           else
-            echo "need_sync=true" >> $GITHUB_OUTPUT
+            echo "need_sync=true" >> "$GITHUB_OUTPUT"
             echo "需要同步: ${CUSTOM_TAG}"
           fi
 
@@ -65,11 +72,18 @@ jobs:
       - name: Create tag
         if: steps.check.outputs.need_sync == 'true'
         run: |
-          UPSTREAM_TAG="${{ steps.tag.outputs.upstream_tag }}"
-          CUSTOM_TAG="${UPSTREAM_TAG}-custom"
+          CUSTOM_TAG="${{ steps.vars.outputs.custom_tag }}"
           
           git tag "$CUSTOM_TAG"
           git push origin "$CUSTOM_TAG"
           
           echo "已创建 tag: ${CUSTOM_TAG}"
-          echo "Docker 构建将自动触发"
+          echo "将直接调用 Docker 构建工作流"
+
+  docker:
+    if: needs.sync.outputs.need_sync == 'true'
+    needs: sync
+    uses: ./.github/workflows/docker-image.yml
+    with:
+      version: ${{ needs.sync.outputs.custom_tag }}
+    secrets: inherit
