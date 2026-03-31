@@ -3,6 +3,9 @@ name: sync-upstream
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -26,8 +29,11 @@ jobs:
       - name: Get latest upstream tag
         id: tag
         run: |
-          UPSTREAM_TAG=$(git ls-remote --tags --sort='-v:refname' https://github.com/router-for-me/CLIProxyAPI.git | grep -oP 'refs/tags/v\d+\.\d+\.\d+$' | head -1 | sed 's|refs/tags/||')
-          echo "upstream_tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
+          UPSTREAM_TAG=$(git ls-remote --refs --tags https://github.com/router-for-me/CLIProxyAPI.git "v*" | awk -F/ '{print $3}' | sort -V | tail -n 1)
+          if [ -z "$UPSTREAM_TAG" ]; then
+            exit 1
+          fi
+          echo "upstream_tag=${UPSTREAM_TAG}" >> "$GITHUB_OUTPUT"
           echo "上游最新版本: ${UPSTREAM_TAG}"
 
       - name: Check if sync needed
