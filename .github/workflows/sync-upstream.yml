@@ -28,7 +28,12 @@ jobs:
         run: |
           git fetch upstream --tags 2>/dev/null || true
           
-          UPSTREAM_TAG=$(git describe --tags `git rev-list --tags --max-count=1` --abbrev=0 upstream/main 2>/dev/null || git tag -l 'v*' --sort=-v:refname upstream | head -1)
+          UPSTREAM_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          
+          if [ -z "$UPSTREAM_TAG" ]; then
+            echo "无法获取上游版本"
+            exit 1
+          fi
           
           echo "upstream_tag=${UPSTREAM_TAG}" >> $GITHUB_OUTPUT
           
