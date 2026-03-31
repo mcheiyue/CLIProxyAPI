@@ -24,7 +24,7 @@ jobs:
       - name: Fetch upstream
         run: |
           git remote add upstream https://github.com/router-for-me/CLIProxyAPI.git 2>/dev/null || true
-          git fetch upstream main --tags
+          git fetch upstream main:refs/remotes/upstream/main
 
       - name: Get latest upstream tag
         id: tag
