@@ -2,6 +2,12 @@ name: sync-upstream
 
 on:
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 强制触发 Docker 构建（即使当前版本已同步）
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -81,7 +87,7 @@ jobs:
           echo "将直接调用 Docker 构建工作流"
 
   docker:
-    if: needs.sync.outputs.need_sync == 'true'
+    if: needs.sync.outputs.need_sync == 'true' || inputs.force_rebuild == true
     needs: sync
     uses: ./.github/workflows/docker-image.yml
     with:
