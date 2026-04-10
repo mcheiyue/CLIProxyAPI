@@ -66,14 +66,22 @@ jobs:
       - name: Merge upstream
         if: steps.check.outputs.need_sync == 'true'
         run: |
+          PRE_MERGE_HEAD=$(git rev-parse HEAD)
           git checkout main
-          git merge upstream/main --no-edit -m "同步上游更新" || {
+          git merge upstream/main --no-commit --no-ff -m "同步上游更新" || {
             echo "合并有冲突，尝试保留自定义修改..."
             git checkout --ours internal/runtime/executor/codex_executor.go 2>/dev/null || true
-            git add -A
-            git commit -m "同步上游更新（保留自定义修改）" --no-edit || true
           }
-          git push origin main
+          git checkout "$PRE_MERGE_HEAD" -- .github/workflows 2>/dev/null || true
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "同步结果仅包含工作流变更，保留当前仓库工作流并跳过 main 推送"
+            git merge --abort
+          else
+            git commit --no-edit
+            git push origin main
+          fi
 
       - name: Create tag
         if: steps.check.outputs.need_sync == 'true'
