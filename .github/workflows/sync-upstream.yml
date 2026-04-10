@@ -72,8 +72,22 @@ jobs:
             echo "合并有冲突，尝试保留自定义修改..."
             git checkout --ours internal/runtime/executor/codex_executor.go 2>/dev/null || true
           }
-          git checkout "$PRE_MERGE_HEAD" -- .github/workflows 2>/dev/null || true
+          git restore --source="$PRE_MERGE_HEAD" --staged --worktree -- .github/workflows
           git add -A
+
+          if ! git diff --cached --quiet -- .github/workflows; then
+            echo "检测到仍有工作流变更被暂存，终止本次同步推送"
+            git diff --cached --name-status -- .github/workflows || true
+            git merge --abort
+            exit 1
+          fi
+
+          if git log --format= --name-only "$PRE_MERGE_HEAD..upstream/main" -- .github/workflows | grep -q .; then
+            echo "检测到上游提交包含工作流目录变更，当前同步流程不会继续推送"
+            git log --oneline "$PRE_MERGE_HEAD..upstream/main" -- .github/workflows || true
+            git merge --abort
+            exit 1
+          fi
 
           if git diff --cached --quiet; then
             echo "同步结果仅包含工作流变更，保留当前仓库工作流并跳过 main 推送"
